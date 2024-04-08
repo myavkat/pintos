@@ -64,6 +64,7 @@ static char **read_command_line (void);
 static char **parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
+static void hello(char **argv);
 
 #ifdef FILESYS
 static void locate_block_devices (void);
@@ -277,6 +278,11 @@ parse_options (char **argv)
   return argv;
 }
 
+static void hello(char **argv UNUSED)
+{
+  printf("Hello world!");
+}
+
 /* Runs the task specified in ARGV[1]. */
 static void
 run_task (char **argv)
@@ -308,6 +314,7 @@ run_actions (char **argv)
   /* Table of supported actions. */
   static const struct action actions[] = 
     {
+      {"hello", 1, hello},
       {"run", 2, run_task},
 #ifdef FILESYS
       {"ls", 1, fsutil_ls},
@@ -318,8 +325,12 @@ run_actions (char **argv)
 #endif
       {NULL, 0, NULL},
     };
+    
+    if(*argv==NULL){
+      argv[0]="hello";
+    }
 
-  while (*argv != NULL)
+    while (*argv != NULL)
     {
       const struct action *a;
       int i;
@@ -335,12 +346,12 @@ run_actions (char **argv)
       for (i = 1; i < a->argc; i++)
         if (argv[i] == NULL)
           PANIC ("action `%s' requires %d argument(s)", *argv, a->argc - 1);
-
+      
       /* Invoke action and advance. */
       a->function (argv);
       argv += a->argc;
     }
-  
+
 }
 
 /* Prints a kernel command line help message and powers off the
