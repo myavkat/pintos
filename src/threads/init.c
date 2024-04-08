@@ -280,7 +280,7 @@ parse_options (char **argv)
 
 static void hello(char **argv UNUSED)
 {
-  printf("Hello world!");
+  printf("Hello world!\n");
 }
 
 /* Runs the task specified in ARGV[1]. */
