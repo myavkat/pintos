@@ -1,0 +1,181 @@
+\documentclass[a4paper,11pt]{paper}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=3.2cm]{geometry}
+\usepackage{enumitem}
+\usepackage{CJKutf8}
+\usepackage[colorlinks=true,urlcolor=blue,linkcolor=black]{hyperref}
+\usepackage{mathtools}
+\usepackage{listings}
+\usepackage{fancyvrb}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{calc}
+\usepackage{relsize}
+\usepackage{emoji}  % lualatex
+\usepackage{fontawesome}  % lualatex
+\usepackage{fancyvrb}
+
+\usepackage{lastpage}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{} % clear existing header/footer entries
+% Place Page X of Y on the right-hand
+% side of the footer
+\fancyfoot[R]{Page \thepage \hspace{1pt} of \pageref{LastPage}}
+
+\usetikzlibrary{calc,shapes.multipart,chains,arrows}
+
+\renewcommand*{\theenumi}{\thesection.\arabic{enumi}}
+\renewcommand*{\theenumii}{\theenumi.\arabic{enumii}}
+\let\orighref\href
+\renewcommand{\href}[2]{\orighref{#1}{#2\,\smaller[4]\faExternalLink}}
+
+\let\Red=\alert
+\definecolor{few-gray-bright}{HTML}{010202}
+\definecolor{few-red-bright}{HTML}{EE2E2F}
+\definecolor{few-green-bright}{HTML}{008C48}
+\definecolor{few-blue-bright}{HTML}{185AA9}
+\definecolor{few-orange-bright}{HTML}{F47D23}
+\definecolor{few-purple-bright}{HTML}{662C91}
+\definecolor{few-brown-bright}{HTML}{A21D21}
+\definecolor{few-pink-bright}{HTML}{B43894}
+
+\definecolor{few-gray}{HTML}{737373}
+\definecolor{few-red}{HTML}{F15A60}
+\definecolor{few-green}{HTML}{7AC36A}
+\definecolor{few-blue}{HTML}{5A9BD4}
+\definecolor{few-orange}{HTML}{FAA75B}
+\definecolor{few-purple}{HTML}{9E67AB}
+\definecolor{few-brown}{HTML}{CE7058}
+\definecolor{few-pink}{HTML}{D77FB4}
+
+\definecolor{few-gray-light}{HTML}{CCCCCC}
+\definecolor{few-red-light}{HTML}{F2AFAD}
+\definecolor{few-green-light}{HTML}{D9E4AA}
+\definecolor{few-blue-light}{HTML}{B8D2EC}
+\definecolor{few-orange-light}{HTML}{F3D1B0}
+\definecolor{few-purple-light}{HTML}{D5B2D4}
+\definecolor{few-brown-light}{HTML}{DDB9A9}
+\definecolor{few-pink-light}{HTML}{EBC0DA}
+
+\colorlet{alert-color}{few-red-bright!80!black}
+\colorlet{comment}{few-blue-bright}
+\colorlet{string}{few-green-bright}
+
+\lstdefinestyle{ccode}{
+    showstringspaces=false,
+    stringstyle={\ttfamily\color{string}},
+    language=C,escapeinside=`',columns=flexible,commentstyle=\color{comment},
+    basicstyle=\ttfamily,
+    classoffset=2, keywordstyle=\color{alert-color}
+}
+
+\lstnewenvironment{ccode}[1][]%
+{\lstset{style=ccode,basicstyle=\ttfamily\openup-.17\baselineskip,#1}}%
+{}
+
+\lstset{
+    basicstyle=\itshape,
+    xleftmargin=3em,
+    literate={->}{$\rightarrow$}{2}
+        {α}{$\alpha$}{1}
+        {δ}{$\delta$}{1}
+        {ε}{$\epsilon$}{1}
+}
+
+\renewcommand{\baselinestretch}{1.1}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1em}
+
+\title{INF333 2023-2024 Spring Semester - TP06}
+\author{Elif Kına - 20401889 - <elifkina9@gmail.com>
+    \\ Mehmet Yavuz Katrancı - 20401875 - <mehmetyavuzkatranci@gmail.com>}
+\date{March 2024}
+
+\begin{document}
+
+\maketitle
+
+\section{Preliminaries}
+\subsection{Citations}
+\begin{itemize}
+    \item \href{https://web.archive.org/web/20120617084000/http://www.esapcsolutions.com/ecom/drawings/PhoenixBIOS4_rev6UserMan.pdf}{BIOS interrupt 13h with 42h option}
+    \item \href{https://ostad.nit.ac.ir/payaidea/ospic/file1615.pdf}{BIOS interrupt 18h}
+\end{itemize}
+
+\section{Booting Pintos}
+\textbf{Q 2.1:} Take screenshots of the successful booting of Pintos in QEMU and Bochs, each in both the terminal and the QEMU window. Put the screenshots under \texttt{`pintos/src/p0`}.
+
+\textbf{A 2.1:}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth]{op1.PNG}
+    \caption{QEMU Successfully Works}
+    \label{fig:qemu}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth]{op2.PNG}
+    \caption{Bochs Successfully Works}
+    \label{fig:bochs}
+\end{figure}
+
+\section{Debugging}
+\subsection{Questions About BIOS}
+\textbf{Q 2.2:} Your first task in this section is to use GDB to trace the QEMU BIOS a bit to understand how an IA-32 compatible computer boots.
+\begin{itemize}
+    \item What is the first instruction that gets executed?
+    \item At which physical address is this instruction located?
+    \item Can you guess why the first instruction is like this?
+    \item What are the next three instructions?
+\end{itemize}
+
+\textbf{A 2.2:}
+\begin{itemize}
+    \item The very first instruction that the program executes is:
+          mov 0X14(\%ebx),\%esi
+    \item This instruction is located at the address 0x000F0000.
+    \item With this command, we jump to the first line of the commands of BIOS that will be executed next.
+    \item Three following instructions are:
+          \begin{itemize}
+              \item movzwl 0x2(\%ebx),\%edx
+              \item shl    \$0x4,\%edx
+              \item movzwl 0x4(\%ebx),\%eax
+          \end{itemize}
+\end{itemize}
+
+\textbf{Q 2.3:} Trace the Pintos bootloader.
+\begin{itemize}
+    \item How does the bootloader read disk sectors? In particular, what BIOS interrupt is used?
+    \item How does the bootloader decide whether it finds the Pintos kernel?
+    \item What happens when the bootloader could not find the Pintos kernel?
+    \item At what point does the bootloader transfer control to the Pintos kernel?
+\end{itemize}
+
+\textbf{A 2.3:}
+\begin{itemize}
+    \item Sends the drive number and sector number to read to the memory pointed at ES register to the 13h BIOS interrupt with AH register set to 42h for extended read function.
+    \item Looks for each partition’s type and compares with the expected value of 20h which is used for the Pintos kernel’s partition type.
+    \item Calls 18h bios interrupt to signal that no bootable drive is found and to load ROM BASIC (this was the original behavior, some BIOS implementations use this signal to look for network bootable devices or show error)
+    \item After loading all of the kernel (or the limit of a maximum of 512 kb) to the memory address starting with 20000h, transfers control to the kernel (address 20000h) with ljmp instruction.
+\end{itemize}
+
+\textbf{Q 2.4:} Add a screenshot of gdb while tracing the Pintos kernel.\\
+\textbf{A 2.4:}
+See figure \ref{fig:kerneltrace}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth]{kerneltrace.png}
+    \caption{2.4 Kernel Tracing Screenshot}
+    \label{fig:kerneltrace}
+\end{figure}
+
+
+\end{document}
+
