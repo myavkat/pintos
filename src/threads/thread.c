@@ -117,13 +117,13 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -134,11 +134,23 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+  /******************/
+  void handle_sleeping_threads(struct thread *t, void * unused){
+if(t->status == THREAD_SLEEPING){
+    t->remaining_ticks--;
+    if(t->remaining_ticks == 0){
+      thread_wake(t);
+    }
+    }
+}
+  thread_foreach(&handle_sleeping_threads, NULL);
+
+  /******************/
+  
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
-
 /* Prints thread statistics. */
 void
 thread_print_stats (void) 
@@ -295,7 +307,36 @@ thread_exit (void)
   schedule ();
   NOT_REACHED ();
 }
+void thread_sleep(int64_t ticks)
+{
+  if(ticks>0){
+    enum intr_level old_level;
+    
+    ASSERT (!intr_context ());
+    
+    old_level = intr_disable ();
+    struct thread *cur = thread_current ();
+    cur->status = THREAD_SLEEPING;
+    cur->remaining_ticks = ticks;
+    schedule();
+    intr_set_level (old_level);
+  }
+}
 
+void thread_wake(struct thread *t)
+{
+  enum intr_level old_level;
+
+  ASSERT (is_thread (t));
+
+  old_level = intr_disable ();
+  ASSERT (t->status == THREAD_SLEEPING);
+  if(t->remaining_ticks == 0){
+    list_push_back (&ready_list, &t->elem);
+    t->status = THREAD_READY;
+  }
+  intr_set_level (old_level);
+}
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
