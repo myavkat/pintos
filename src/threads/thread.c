@@ -65,6 +65,7 @@ static void kernel_thread (thread_func *, void *aux);
 static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
+static struct thread *next_thread_to_run_without_pop (void);
 static void init_thread (struct thread *, const char *name, int priority);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
@@ -335,11 +336,16 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY. 
+   Yields thread if NEW_PRIORITY is less than old priority */
 void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  if(next_thread_to_run_without_pop()->priority > new_priority)
+  {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -498,6 +504,20 @@ next_thread_to_run (void)
     return idle_thread;
   else
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+}
+
+/* Chooses and returns the next thread to be scheduled.  Should
+   return a thread from the run queue, unless the run queue is
+   empty.  (If the running thread can continue running, then it
+   will be in the run queue.)  If the run queue is empty, return
+   idle_thread. */
+static struct thread *
+next_thread_to_run_without_pop (void) 
+{
+  if (list_empty (&ready_list))
+    return idle_thread;
+  else
+    return list_entry (list_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
