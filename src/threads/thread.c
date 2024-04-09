@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "list.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -64,12 +65,15 @@ static void kernel_thread (thread_func *, void *aux);
 static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
+static struct thread *next_thread_to_run_without_pop (void);
 static void init_thread (struct thread *, const char *name, int priority);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+static void thread_list_insert_priority_sorted(struct list *l, struct thread *t);
+static bool is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_elem, void *UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -215,6 +219,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  try_thread_yield();
   return tid;
 }
 
@@ -251,8 +256,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
-  t->status = THREAD_READY;
+  thread_list_insert_priority_sorted(&ready_list, t);
+  t->status=THREAD_READY;
   intr_set_level (old_level);
 }
 
@@ -309,6 +314,17 @@ thread_exit (void)
   schedule ();
   NOT_REACHED ();
 }
+
+/* if there is a ready thread with higher priority than current one yields */
+void 
+try_thread_yield(void)
+{
+  if (!list_empty (&ready_list) &&
+      list_entry (list_front (&ready_list), struct thread, elem)->priority > thread_get_priority ()) 
+  {
+    thread_yield();
+  }
+}
 void thread_sleep(int64_t ticks)
 {
   if(ticks>0){
@@ -334,7 +350,7 @@ void thread_wake(struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_SLEEPING);
   if(t->remaining_ticks == 0){
-    list_push_back (&ready_list, &t->elem);
+    thread_list_insert_priority_sorted(&ready_list, t);
     t->status = THREAD_READY;
   }
   intr_set_level (old_level);
@@ -351,7 +367,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    thread_list_insert_priority_sorted(&ready_list, cur);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -374,11 +390,16 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY. 
+   Yields thread if NEW_PRIORITY is less than old priority */
 void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  if(next_thread_to_run_without_pop()->priority > new_priority)
+  {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -539,6 +560,20 @@ next_thread_to_run (void)
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
+/* Chooses and returns the next thread to be scheduled.  Should
+   return a thread from the run queue, unless the run queue is
+   empty.  (If the running thread can continue running, then it
+   will be in the run queue.)  If the run queue is empty, return
+   idle_thread. */
+static struct thread *
+next_thread_to_run_without_pop (void) 
+{
+  if (list_empty (&ready_list))
+    return idle_thread;
+  else
+    return list_entry (list_front (&ready_list), struct thread, elem);
+}
+
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
 
@@ -621,6 +656,32 @@ allocate_tid (void)
 
   return tid;
 }
+
+/* To use with thread_list_insert_priority_sorted function.
+   Type is list_less_func.
+   Compares priority of two threads and 
+   returns true if first threads priority is bigger, 
+   false otherwise. */
+static bool 
+is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_elem, void *UNUSED)
+{
+  int t1_pri = list_entry(t1_elem, struct thread, elem)->priority;
+  int t2_pri = list_entry(t2_elem, struct thread, elem)->priority;
+  return t1_pri>t2_pri;
+}
+
+/* Must use this for adding threads to ready_list!
+   Adds the given thread to the ready list 
+   before the first thread with a lower priority 
+   than the thread to add. 
+   If added thread is higher priority than current thread, 
+   current thread yields. */
+static void 
+thread_list_insert_priority_sorted(struct list *l, struct thread *t)
+{
+    list_insert_ordered(l, &t->elem, &is_bigger_priority, NULL);
+}
+
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
