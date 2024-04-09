@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "list.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -70,6 +71,8 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+static void insert_ready_list_priority_sorted(struct thread *t);
+static bool is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_elem, void *UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -237,8 +240,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
-  t->status = THREAD_READY;
+  insert_ready_list_priority_sorted(t);
+  if(strcmp(thread_current()->name, "idle") && thread_current()->priority<t->priority)
+    thread_yield();
   intr_set_level (old_level);
 }
 
@@ -308,7 +312,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    insert_ready_list_priority_sorted (cur);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -578,6 +582,33 @@ allocate_tid (void)
 
   return tid;
 }
+
+/* To use with insert_ready_list_priority_sorted function.
+   Type is list_less_func.
+   Compares priority of two threads and 
+   returns true if first threads priority is bigger, 
+   false otherwise. */
+static bool 
+is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_elem, void *UNUSED)
+{
+  int t1_pri = list_entry(t1_elem, struct thread, elem)->priority;
+  int t2_pri = list_entry(t2_elem, struct thread, elem)->priority;
+  return t1_pri>t2_pri;
+}
+
+/* Must use this for adding threads to ready_list!
+   Adds the given thread to the ready list 
+   before the first thread with a lower priority 
+   than the thread to add. 
+   If added thread is higher priority than current thread, 
+   current thread yields. */
+static void 
+insert_ready_list_priority_sorted(struct thread *t)
+{
+    list_insert_ordered(&ready_list, &t->elem, &is_bigger_priority, NULL);
+    t->status=THREAD_READY;
+}
+
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
