@@ -29,9 +29,17 @@
 #include "threads/synch.h"
 #include <stdio.h>
 #include <string.h>
+#include "list.h"
+#include "stdbool.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+
+static bool is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_elem, void *aux UNUSED);
+static void thread_list_insert_priority_sorted(struct list *l, struct thread *t);
+static int get_semaphore_max_priority(struct semaphore *sema);
+static bool semaphore_comparison_less_function(const struct list_elem *sema1, const struct list_elem *sema2, void *aux UNUSED);
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -68,7 +76,7 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      thread_list_insert_priority_sorted(&sema->waiters, thread_current ());
       thread_block ();
     }
   sema->value--;
@@ -118,6 +126,7 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
+  try_thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -295,7 +304,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  list_insert_ordered(&cond->waiters, &waiter.elem, &semaphore_comparison_less_function, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -335,4 +344,50 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+/* To use with thread_list_insert_priority_sorted function.
+   Type is list_less_func.
+   Compares priority of two threads and 
+   returns true if first threads priority is bigger, 
+   false otherwise. */
+static bool 
+is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_elem, void *UNUSED)
+{
+  int t1_pri = list_entry(t1_elem, struct thread, elem)->priority;
+  int t2_pri = list_entry(t2_elem, struct thread, elem)->priority;
+  return t1_pri>t2_pri;
+}
+
+/* Must use this for adding threads to ready_list!
+   Adds the given thread to the ready list 
+   before the first thread with a lower priority 
+   than the thread to add. 
+   If added thread is higher priority than current thread, 
+   current thread yields. */
+static void 
+thread_list_insert_priority_sorted(struct list *l, struct thread *t)
+{
+    list_insert_ordered(l, &t->elem, &is_bigger_priority, NULL);
+}
+
+/* Compares two semaphores' waiter lists' maximum thread priority
+   return true if sema1's waiter threads' max priority is bigger
+   false otherwise. */
+static bool
+semaphore_comparison_less_function(const struct list_elem *sema1, const struct list_elem *sema2, void *aux UNUSED)
+{
+  int sema1_max_pri = MAX(get_semaphore_max_priority(&list_entry(sema1, struct semaphore_elem, elem)->semaphore),thread_current()->priority);
+  int sema2_max_pri = get_semaphore_max_priority(&list_entry(sema2, struct semaphore_elem, elem)->semaphore);
+  return sema1_max_pri>sema2_max_pri;
+}
+
+/* Gets max priority thread in the semaphore's waiter list. */
+static int
+get_semaphore_max_priority(struct semaphore *sema)
+{
+  if (list_empty(&sema->waiters)) {
+    return 0;
+  }
+  return list_entry(list_front(&sema->waiters), struct thread, elem)->priority;
 }

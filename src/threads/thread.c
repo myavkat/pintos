@@ -72,7 +72,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-static void insert_ready_list_priority_sorted(struct thread *t);
+static void thread_list_insert_priority_sorted(struct list *l, struct thread *t);
 static bool is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_elem, void *UNUSED);
 
 /* Initializes the threading system by transforming the code
@@ -205,6 +205,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  try_thread_yield();
   return tid;
 }
 
@@ -241,9 +242,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  insert_ready_list_priority_sorted(t);
-  if(strcmp(thread_current()->name, "idle") && thread_current()->priority<t->priority)
-    thread_yield();
+  thread_list_insert_priority_sorted(&ready_list, t);
+  t->status=THREAD_READY;
   intr_set_level (old_level);
 }
 
@@ -301,6 +301,17 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+/* if there is a ready thread with higher priority than current one yields */
+void 
+try_thread_yield(void)
+{
+  if (!list_empty (&ready_list) &&
+      list_entry (list_front (&ready_list), struct thread, elem)->priority > thread_get_priority ()) 
+  {
+    thread_yield();
+  }
+}
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
@@ -313,7 +324,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    insert_ready_list_priority_sorted (cur);
+    thread_list_insert_priority_sorted(&ready_list, cur);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -603,7 +614,7 @@ allocate_tid (void)
   return tid;
 }
 
-/* To use with insert_ready_list_priority_sorted function.
+/* To use with thread_list_insert_priority_sorted function.
    Type is list_less_func.
    Compares priority of two threads and 
    returns true if first threads priority is bigger, 
@@ -623,10 +634,9 @@ is_bigger_priority(const struct list_elem *t1_elem, const struct list_elem *t2_e
    If added thread is higher priority than current thread, 
    current thread yields. */
 static void 
-insert_ready_list_priority_sorted(struct thread *t)
+thread_list_insert_priority_sorted(struct list *l, struct thread *t)
 {
-    list_insert_ordered(&ready_list, &t->elem, &is_bigger_priority, NULL);
-    t->status=THREAD_READY;
+    list_insert_ordered(l, &t->elem, &is_bigger_priority, NULL);
 }
 
 
