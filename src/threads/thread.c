@@ -117,6 +117,19 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
+/* Decrements remaining_ticks of sleeping threads by one and 
+   if ticks are zero wakes them up. To use in thread_tick with thread_foreach. */
+static void 
+handle_sleeping_threads(struct thread *t, void *aux UNUSED)
+{
+  if(t->status == THREAD_SLEEPING)
+  {
+    t->remaining_ticks--;
+    if(t->remaining_ticks == 0){
+      thread_wake(t);
+    }
+  }
+}
 
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
@@ -133,19 +146,8 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-
-  /******************/
-  void handle_sleeping_threads(struct thread *t, void * unused){
-if(t->status == THREAD_SLEEPING){
-    t->remaining_ticks--;
-    if(t->remaining_ticks == 0){
-      thread_wake(t);
-    }
-    }
-}
+  
   thread_foreach(&handle_sleeping_threads, NULL);
-
-  /******************/
   
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
