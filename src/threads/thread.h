@@ -91,7 +91,7 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
     
-    int64_t remaining_ticks; 		/* Sleeping threads remaining ticks. */
+    int64_t remaining_ticks; 		       /* Sleeping threads remaining ticks. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -103,6 +103,10 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    int nice;                           /* niceness */
+    int32_t recent_cpu;                 /* 17.14 fixed-point represented recent_cpu */
+    
   };
 
 /* If false (default), use round-robin scheduler.
