@@ -466,49 +466,53 @@ setup_stack (void **esp)
 }
 
 static bool 
-load_stack(void **esp, int argc, char **argv)
+load_stack(void **esp_, int argc, char **argv)
 {
-  //copy arguments to stack and store the stack pointers in argv
+  char *esp = *esp_;
+  char *arg_ptrs[argc];
+  //copy arguments to stack and store the stack pointers in arg_ptrs
   for (int i = argc - 1; i >= 0; i--)
   {
     int arg_len = strlen(argv[i]) + 1;
-    *esp = (void *) ((intptr_t)*esp - arg_len);
-    memcpy(*esp, argv[i], arg_len);
-    argv[i] = *esp;
+    esp = (void *) (esp - arg_len);
+    memcpy(esp, argv[i], arg_len);
+    arg_ptrs[i] = esp;
   }
 
   //alignment
-  while ((intptr_t)*esp%4!=0)
+  while ((intptr_t)esp % 4!=0)
   {
-    *esp = (void *)((intptr_t)*esp - 1);
-    memset(*esp, 0, 1);
+    esp = (void *)(esp - 1);
+    memset(esp, 0, 1);
   }
   
   //add null for argv[argc]
-  *esp = (void *)((intptr_t)(*esp)-4);
-  memset(*esp, 0, 4);
+  esp = (esp-4);
+  memset(esp, 0, 4);
 
-  //add argv[i] addresses to stack
+  //add arg_ptrs[i] addresses to stack
   for (int i = argc - 1; i >= 0; i--)
   {
-    *esp = (void *)((intptr_t)(*esp) - 4);
-    memcpy(*esp, argv[i], 4);
+    esp = (esp - 4);
+    memcpy(esp, (void *)(arg_ptrs[i]), 4);
   }
 
   //push start address of argv
-  void *argv_start = *esp;
-  *esp = (void *)((intptr_t)(*esp) - 4);
-  memcpy(*esp, argv_start, 4);
+  char *argv_start = esp;
+  esp = esp - 4;
+  memcpy(esp, argv_start, 4);
 
   //push argc
-  *esp = (void *)((intptr_t)(*esp) - 4);
-  memset(*esp, 0, 4);
-  memset(*esp, argc, 1);
+  esp = esp - 4;
+  memset(esp, 0, 4);
+  memset(esp, argc, 1);
 
   //push return address
-  *esp = (void *)((intptr_t)(*esp) - 4);
-  memset(*esp, 0, 4);
-  
+  esp = esp - 4;
+  memset(esp, 0, 4);
+
+  //update esp reference
+  *esp_ = esp;
   return true;
 }
 /* Adds a mapping from user virtual address UPAGE to kernel
