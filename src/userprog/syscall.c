@@ -49,6 +49,4 @@ syscall_handler (struct intr_frame *f)
     
     //othersss
   }
-
-  printf ("wrong system call!\n");
 }
