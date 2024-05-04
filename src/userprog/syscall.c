@@ -25,21 +25,26 @@ syscall_handler (struct intr_frame *f)
   int exit_status;
   const char *buffer;
   int size;
+  int fd;
   switch (syscall_no){
     case SYS_HALT:
       shutdown_power_off(); // Function to halt the machine
       break;
       
     case SYS_EXIT: 
-      exit_status = *(int*)f->esp; // Read exit status from esp (stack)
+      exit_status = *(char *)f->esp; // Read exit status from esp (stack)
 
       process_exit(exit_status); // Terminates the current process
       break;
     
     case SYS_WRITE: 
-      buffer = *(char**)(f->esp + 4); // Read buffer pointer
-      size = *(int*)(f->esp + 8); // Read number of bytes
-      putbuf(buffer, size); // Write data to the console
+      fd = *(int*)((intptr_t)(f->esp) + 4);
+      buffer = *(char**)((intptr_t)(f->esp) + 8); // Read buffer pointer
+      size = *(int*)((intptr_t)(f->esp) + 12); // Read number of bytes
+      if(fd == 1)
+      {
+        putbuf(buffer, size); // Write data to the console
+      }
       break;
     
     //othersss
