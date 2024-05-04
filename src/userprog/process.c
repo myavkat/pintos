@@ -470,7 +470,7 @@ load_stack(void **esp, int argc, char **argv)
   for (int i = argc - 1; i >= 0; i--)
   {
     int arg_len = strlen(argv[i]) + 1;
-    *esp = (void *) ((int)*esp - arg_len);
+    *esp = (void *) ((intptr_t)*esp - arg_len);
     memcpy(*esp, argv[i], arg_len);
     argv[i] = *esp;
   }
@@ -494,8 +494,9 @@ load_stack(void **esp, int argc, char **argv)
   }
 
   //push start address of argv
-  memcpy((void *)((intptr_t)(*esp) - 4), *esp, 4);
+  void *argv_start = *esp;
   *esp = (void *)((intptr_t)(*esp) - 4);
+  memcpy(*esp, argv_start, 4);
 
   //push argc
   *esp = (void *)((intptr_t)(*esp) - 4);
@@ -505,12 +506,6 @@ load_stack(void **esp, int argc, char **argv)
   //push return address
   *esp = (void *)((intptr_t)(*esp) - 4);
   memset(*esp, 0, 4);
-  void *tmp = *esp;
-  while (tmp != (void *)0xc0000000)
-  {
-    printf("%p\n", tmp);
-    tmp= (void *)(((intptr_t) tmp) + 1);
-  }
   
   return true;
 }
