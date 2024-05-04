@@ -197,6 +197,7 @@ struct Elf32_Phdr
 #define PF_R 4          /* Readable. */
 
 static bool setup_stack (void **esp);
+static bool load_stack(void **esp , int argc, char **argv);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -209,6 +210,19 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
+  //parse argv and argc from file_name
+  char *fn = palloc_get_page(PAL_USER);
+  strlcpy(fn, file_name, strlen(file_name) + 1);
+
+  char *save_ptr, *token;
+  char **argv = palloc_get_page(PAL_USER);
+  int argc = 0;
+  for (token = strtok_r (fn, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
+  {
+    argv[argc] = token;
+    argc++;
+  }
+
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -223,10 +237,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (argv[0]);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", argv[0]);
       goto done; 
     }
 
@@ -239,7 +253,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      printf ("load: %s: error loading executable\n", file_name);
+      printf ("load: %s: error loading executable\n", argv[0]);
       goto done; 
     }
 
@@ -305,7 +319,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
-
+  /* Load arguments to stack*/
+  if (!load_stack(esp, argc, argv))
+    goto done;
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -313,6 +329,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
+  palloc_free_page (argv);
+  palloc_free_page (fn);
   file_close (file);
   return success;
 }
@@ -445,6 +463,57 @@ setup_stack (void **esp)
   return success;
 }
 
+static bool 
+load_stack(void **esp, int argc, char **argv)
+{
+  //copy arguments to stack and store the stack pointers in argv
+  for (int i = argc - 1; i >= 0; i--)
+  {
+    int arg_len = strlen(argv[i]) + 1;
+    *esp = (void *) ((int)*esp - arg_len);
+    memcpy(*esp, argv[i], arg_len);
+    argv[i] = *esp;
+  }
+
+  //alignment
+  while ((intptr_t)*esp%4!=0)
+  {
+    *esp = (void *)((intptr_t)*esp - 1);
+    memset(*esp, 0, 1);
+  }
+  
+  //add null for argv[argc]
+  *esp = (void *)((intptr_t)(*esp)-4);
+  memset(*esp, 0, 4);
+
+  //add argv[i] addresses to stack
+  for (int i = argc - 1; i >= 0; i--)
+  {
+    *esp = (void *)((intptr_t)(*esp) - 4);
+    memcpy(*esp, argv[i], 4);
+  }
+
+  //push start address of argv
+  memcpy((void *)((intptr_t)(*esp) - 4), *esp, 4);
+  *esp = (void *)((intptr_t)(*esp) - 4);
+
+  //push argc
+  *esp = (void *)((intptr_t)(*esp) - 4);
+  memset(*esp, 0, 4);
+  memset(*esp, argc, 1);
+
+  //push return address
+  *esp = (void *)((intptr_t)(*esp) - 4);
+  memset(*esp, 0, 4);
+  void *tmp = *esp;
+  while (tmp != (void *)0xc0000000)
+  {
+    printf("%p\n", tmp);
+    tmp= (void *)(((intptr_t) tmp) + 1);
+  }
+  
+  return true;
+}
 /* Adds a mapping from user virtual address UPAGE to kernel
    virtual address KPAGE to the page table.
    If WRITABLE is true, the user process may modify the page;
