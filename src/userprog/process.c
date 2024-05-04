@@ -94,9 +94,11 @@ process_wait (tid_t child_tid UNUSED)
 
 /* Free the current process's resources. */
 void
-process_exit (int exit_status UNUSED)
+process_exit (int exit_status)
 {
   struct thread *cur = thread_current ();
+  char *save_ptr;
+  printf("%s: exit(%d)\n", strtok_r(cur->name," ", &save_ptr), exit_status);
   uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
