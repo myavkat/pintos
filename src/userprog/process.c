@@ -97,8 +97,6 @@ void
 process_exit (int exit_status)
 {
   struct thread *cur = thread_current ();
-  char *save_ptr;
-  printf("%s: exit(%d)\n", strtok_r(cur->name," ", &save_ptr), exit_status);
   uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
@@ -117,6 +115,8 @@ process_exit (int exit_status)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  char *save_ptr;
+  printf("%s: exit(%d)\n", strtok_r(cur->name," ", &save_ptr), exit_status);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -490,17 +490,18 @@ load_stack(void **esp_, int argc, char **argv)
   esp = (esp-4);
   memset(esp, 0, 4);
 
-  //add arg_ptrs[i] addresses to stack
-  for (int i = argc - 1; i >= 0; i--)
+
+  // push arg_ptrs
+  for(int i = argc - 1; i >= 0; i--)
   {
-    esp = (esp - 4);
-    memcpy(esp, (void *)(arg_ptrs[i]), 4);
+    esp = (char *) esp - sizeof(char *);
+    memcpy(esp, &arg_ptrs[i], sizeof(char *));
   }
 
-  //push start address of argv
-  char *argv_start = esp;
-  esp = esp - 4;
-  memcpy(esp, argv_start, 4);
+  // push argv address
+  char **argv_ptr = (char **)esp;
+  esp = (char *) esp - sizeof(char **);
+  memcpy(esp, &argv_ptr, sizeof(char **));
 
   //push argc
   esp = esp - 4;
