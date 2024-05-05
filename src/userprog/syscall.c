@@ -42,7 +42,7 @@ syscall_handler (struct intr_frame *f)
       }
       exit_status = *(int *)f->esp + 4; // Read exit status from esp (stack)
 
-      process_exit(exit_status); // Terminates the current process
+      thread_exit(exit_status); // Terminates the current process
       break;
     
     case SYS_WRITE: 

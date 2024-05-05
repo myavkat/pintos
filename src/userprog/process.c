@@ -98,7 +98,8 @@ process_exit (int exit_status)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
+  char *save_ptr;
+  printf("%s: exit(%d)\n", strtok_r(cur->name," ", &save_ptr), exit_status);
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -115,8 +116,6 @@ process_exit (int exit_status)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  char *save_ptr;
-  printf("%s: exit(%d)\n", strtok_r(cur->name," ", &save_ptr), exit_status);
 }
 
 /* Sets up the CPU for running user code in the current
