@@ -19,9 +19,9 @@ struct thread_file_descriptor
    struct list_elem file_elem;
 };
 
-static int get_user (const uint8_t *uaddr) ;
-// static bool put_user (uint8_t *udst, uint8_t byte) ;
-static bool is_valid_ptr(const uint8_t *uaddr, int size);
+static int get_user (const uint32_t *uaddr) ;
+// static bool put_user (uint32_t *udst, uint8_t byte) ;
+static bool is_valid_ptr(const uint32_t *uaddr, int size);
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_ref(const char **uaddr, unsigned size);
 static struct file* find_file(int fd);
@@ -195,7 +195,7 @@ syscall_handler (struct intr_frame *f)
    Returns the byte value if successful, -1 if a segfault
    occurred. */
 static int
-get_user (const uint8_t *uaddr)
+get_user (const uint32_t *uaddr)
 {
   int result;
   asm ("movl $1f, %0; movzbl %1, %0; 1:"
@@ -216,7 +216,7 @@ get_user (const uint8_t *uaddr)
 // }
 
 static bool
-is_valid_ptr(const uint8_t *uaddr, int size){
+is_valid_ptr(const uint32_t *uaddr, int size){
   if(uaddr==NULL){
     return false;
   }
@@ -234,7 +234,7 @@ is_valid_ptr(const uint8_t *uaddr, int size){
 
 static bool
 is_valid_ref(const char **uaddr, unsigned size){
-  if(get_user((uint8_t *)*uaddr) == -1){
+  if(get_user((uint32_t *)*uaddr) == -1){
     return false;
   }
   if(*uaddr == NULL){
@@ -245,7 +245,7 @@ is_valid_ref(const char **uaddr, unsigned size){
 
   while (*(str + i) != '\0' && i<size)
   {
-    if(get_user((uint8_t *)(str + i + 1)) == -1){
+    if(get_user((uint32_t *)(str + i + 1)) == -1){
       return false;
     }
     i++;
