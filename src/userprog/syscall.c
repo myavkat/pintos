@@ -11,6 +11,9 @@
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "pagedir.h"
+
+struct lock file_lock;
 
 struct thread_file_descriptor
 {
@@ -21,10 +24,11 @@ struct thread_file_descriptor
 
 static int get_user (const uint32_t *uaddr) ;
 // static bool put_user (uint32_t *udst, uint8_t byte) ;
-static bool is_valid_ptr(const uint32_t *uaddr, int size);
+static bool is_valid_ptr(const uint32_t *uaddr, int args);
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_ref(const char **uaddr, unsigned size);
 static struct file* find_file(int fd);
+static void close_file(struct list * cls_file, int fd);
 
 void
 syscall_init (void) 
@@ -35,12 +39,11 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  int syscall_no;
   if(!is_valid_ptr(f->esp, 1)){
         thread_exit(-1);
         return;
   }
-  syscall_no = *(int*)f->esp; // Read the system call from f->esp
+  int syscall_no = *(int*)f->esp; // Read the system call from f->esp
   int exit_status;
   const char *buffer;
   int size;
@@ -48,6 +51,7 @@ syscall_handler (struct intr_frame *f)
   const char **file_name_ptr;
   struct file *file;
   int i;
+  void * ptr;
   switch (syscall_no){
     case SYS_HALT:
       shutdown_power_off(); // Function to halt the machine
@@ -58,7 +62,7 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      exit_status = *(int *)(f->esp + 4); // Read exit status from _f->esp (stack)
+      exit_status = *(int *)(f->esp + 4); // Read exit status from f->esp (stack)
 
       thread_exit(exit_status); // Terminates the current process
       break;
@@ -157,13 +161,16 @@ syscall_handler (struct intr_frame *f)
       fd = *(int*)(f->esp + 4);
       const char **buffer_ptr = (char**)(f->esp + 8);
       unsigned size = *(unsigned*)(f->esp + 12);
-      //TODO check if buffer is big enough for size
-      if(is_valid_ref(buffer_ptr, size)){
-        //TODOOOOOOOOOOOOOOOOOOOOOOOO
+      if(size <=0){
+        f->eax=size;
+        return;
+      }
+      if(!is_valid_ref(buffer_ptr, size)){
+        f->eax=-1;
+        return;
       }
       char *buffer = *buffer_ptr;
       if(fd==0){
-        //read from console
         i=0;
         while (i<(int)size){
           buffer[i] = input_getc();
@@ -180,15 +187,71 @@ syscall_handler (struct intr_frame *f)
       f->eax = file_read_at(file, buffer, size, 0);
       break;
     case SYS_SEEK:
+      if (!is_valid_ptr(f->esp, 3)){
+          thread_exit(-1);
+          return;
+      }
+      ptr = pagedir_get_page(thread_current()->pagedir, f->esp+4);
+      if (!ptr){
+          thread_exit(-1);
+          return;
+      }
+      lock_acquire (&file_lock);
+      fd = *(int*)(f->esp + 4);
+      unsigned ofs = *(unsigned*)(f->esp + 8);
+      file = find_file(fd);
+      file_seek(file, ofs);
+      lock_release(&file_lock);
       break;
     case SYS_TELL:
+      if (!is_valid_ptr(f->esp,2)){
+      thread_exit(-1);
+      return;
+      }
+      ptr = pagedir_get_page(thread_current()->pagedir, f->esp + 4);
+      if (!ptr){
+          thread_exit(-1);
+          return;
+      }
+      lock_acquire (&file_lock);
+      fd = *(int*)(f->esp + 4);
+      file = find_file(fd);
+      f->eax = file_tell(file);
+      lock_release(&file_lock);
       break;
-    case SYS_CLOSE:
+    case SYS_CLOSE: 
+      if (!is_valid_ptr(f->esp,2)){
+          thread_exit(-1);
+          return;
+      }
+      ptr = pagedir_get_page(thread_current()->pagedir, f->esp + 4);
+      if (!ptr){
+          thread_exit(-1);
+          return;
+      }
+
+      lock_acquire (&file_lock);
+      fd = *(int*)(f->esp + 4);
+      close_file(&thread_current()->file_descriptor_list, fd);
+      lock_release(&file_lock);
       break;
   }
   
 }
 
+static void close_file(struct list * cls_file, int fd){
+
+    struct list_elem * e;
+    struct thread_file_descriptor * tfd;
+
+    for (e = list_begin(cls_file); e != list_end(cls_file); e = list_next(e)){
+            tfd = list_entry(e, struct thread_file_descriptor, file_elem);
+            if(tfd->fd == fd){
+                file_close(tfd->file);
+                  list_remove(e);
+            }
+        }
+} 
 
 /* Reads a byte at user virtual address UADDR.
    UADDR must be below PHYS_BASE.
@@ -216,7 +279,8 @@ get_user (const uint32_t *uaddr)
 // }
 
 static bool
-is_valid_ptr(const uint32_t *uaddr, int size){
+is_valid_ptr(const uint32_t *uaddr, int args){
+  int size = args*4;
   if(uaddr==NULL){
     return false;
   }
