@@ -99,7 +99,8 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct list_elem parent_elem;       /* Parent thread's children_list elem */
     struct list children_list;          /* Process's children */
-    int pid_t;                          /* Process id */
+    int pid;                          /* Process id */
+    struct list file_descriptor_list;
 #endif
     struct semaphore exit_sema;
     struct semaphore wait_sema;

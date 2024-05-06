@@ -66,7 +66,7 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   if (!success) 
     thread_exit (-1);
-
+  thread_current() -> pid = thread_current() -> tid;
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -87,7 +87,7 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   struct thread *cur = thread_current();
   struct list_elem *child_elem = list_head (&cur->children_list);
