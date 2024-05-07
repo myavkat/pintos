@@ -14,7 +14,6 @@
 #include "pagedir.h"
 #include "threads/malloc.h"
 
-struct lock file_lock;
 
 struct thread_file_descriptor
 {
@@ -32,7 +31,6 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init (&file_lock);
 }
 
 static void
@@ -81,18 +79,18 @@ syscall_handler (struct intr_frame *f)
       }
       if(*(unsigned int*)arg1 == 1)
       {
-        lock_acquire (&file_lock);
+        lock_acquire (&filesys_lock);
         putbuf(arg4, *(int*)arg3); // Write data to the console
-        lock_release (&file_lock);
+        lock_release (&filesys_lock);
       }
       file = find_file(*(unsigned int*)arg1);
       if(file==NULL){
         f->eax = -1;
         return;
       }
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       f->eax = file_write(file, arg2, *(off_t *)arg3);
-      lock_release (&file_lock);
+      lock_release (&filesys_lock);
       break;
     case SYS_EXEC:
       arg1 = get_ptr(esp_tmp + 4); //cmd_line
@@ -147,9 +145,9 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       f->eax = filesys_create (arg3, *(unsigned int*)arg2);
-      lock_release (&file_lock);
+      lock_release (&filesys_lock);
       break;
     case SYS_REMOVE:
       arg1 = get_ptr(esp_tmp + 4); //file_name
@@ -162,9 +160,9 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       f->eax = filesys_remove (arg3); 
-      lock_release (&file_lock);
+      lock_release (&filesys_lock);
       break;
     case SYS_OPEN:
       arg1 = get_ptr(esp_tmp + 4); //file_name pointer
@@ -177,9 +175,9 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       file = filesys_open (arg3); 
-      lock_release (&file_lock);
+      lock_release (&filesys_lock);
       if(file == NULL){
         f->eax=-1;
         return;
@@ -197,9 +195,9 @@ syscall_handler (struct intr_frame *f)
         f->eax = -1;
         return;
       }
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       f->eax = file_length (file);
-      lock_release (&file_lock);
+      lock_release (&filesys_lock);
       break;
     case SYS_READ:
       arg1 = get_ptr(esp_tmp + 4); //fd
@@ -232,9 +230,9 @@ syscall_handler (struct intr_frame *f)
         f->eax = -1;
         return;
       }
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       f->eax = file_read_at(file, arg4, *(unsigned*)arg3, 0);
-      lock_release (&file_lock);
+      lock_release (&filesys_lock);
       break;
     case SYS_SEEK:
       arg1 = get_ptr(esp_tmp+4); //fd
@@ -244,9 +242,9 @@ syscall_handler (struct intr_frame *f)
         return;
       }
       file = find_file(*(unsigned int*)arg1);
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       file_seek(file, *(unsigned*)arg2);
-      lock_release(&file_lock);
+      lock_release(&filesys_lock);
       break;
     case SYS_TELL:
       arg1 = get_ptr(esp_tmp + 4); //fd
@@ -255,9 +253,9 @@ syscall_handler (struct intr_frame *f)
         return;
       }
       file = find_file(*(unsigned int*)arg1);
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       f->eax = file_tell(file);
-      lock_release(&file_lock);
+      lock_release(&filesys_lock);
       break;
     case SYS_CLOSE: 
       arg1 = get_ptr(esp_tmp + 4); //fd
@@ -265,9 +263,9 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      lock_acquire (&file_lock);
+      lock_acquire (&filesys_lock);
       close_file(&thread_current()->file_descriptor_list, *(unsigned int*)arg1);
-      lock_release(&file_lock);
+      lock_release(&filesys_lock);
       break;
   }
   
