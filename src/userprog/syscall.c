@@ -49,6 +49,7 @@ syscall_handler (struct intr_frame *f)
   void *arg2;
   void *arg3;
   void *arg4;
+  struct file *file;
   int i;
   switch (syscall_no){
     case SYS_HALT:
@@ -72,9 +73,14 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
+      arg4 = get_ptr(*(void **)arg2);
+      if(arg4 == NULL){
+        thread_exit(-1);
+        return;
+      }
       if(*(unsigned int*)arg1 == 1)
       {
-        putbuf(*(char**)arg2, *(int*)arg3); // Write data to the console
+        putbuf(arg4, *(int*)arg3); // Write data to the console
       }
       break;
     case SYS_EXEC:
@@ -83,7 +89,12 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      f->eax = process_execute(*(char **)arg1);
+      arg3 = get_ptr(*(void **)arg1);
+      if(arg3 == NULL){
+        thread_exit(-1);
+        return;
+      }
+      f->eax = process_execute(arg3);
       break;
     case SYS_WAIT:
       arg1 = get_ptr(esp_tmp + 4); //child_pid
@@ -101,7 +112,7 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      arg3 = get_ptr(arg1);
+      arg3 = get_ptr(*(void **)arg1);
       if(arg3 == NULL){
         thread_exit(-1);
         return;
@@ -132,12 +143,12 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      arg2 = filesys_open (arg3); // arg2 as file *
-      if(arg2 == NULL){
+      file = filesys_open (arg3); 
+      if(file == NULL){
         f->eax=-1;
         return;
       }
-      f->eax = open_file(arg2);
+      f->eax = open_file(file);
       break;
     case SYS_FILESIZE:
       arg1 = get_ptr(esp_tmp + 4); //fd
@@ -145,12 +156,12 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      arg2 = find_file(*(unsigned int*)arg1); // arg2 used as struct file *
-      if(arg2==NULL){
+      file = find_file(*(unsigned int*)arg1);
+      if(file==NULL){
         f->eax = -1;
         return;
       }
-      f->eax = file_length (arg2);
+      f->eax = file_length (file);
       break;
     case SYS_READ:
       arg1 = get_ptr(esp_tmp + 4); //fd
@@ -164,21 +175,26 @@ syscall_handler (struct intr_frame *f)
         f->eax=*(unsigned*)arg3;
         return;
       }
+      arg4 = get_ptr(*(void **)arg2);
+      if(arg4 == NULL){
+        thread_exit(-1);
+        return;
+      }
       if(*(unsigned int*)arg1==0){
         i=0;
         while (i<(int)*(unsigned*)arg3){
-          (*(char**)arg2)[i] = input_getc();
+          ((char *)arg4)[i] = input_getc();
           i++;
         }
         f->eax = *(unsigned*)arg3;
         return;
       }
-      arg4 = find_file(*(unsigned int*)arg1); // arg4 used as struct file *
-      if(arg4 == NULL){
+      file = find_file(*(unsigned int*)arg1);
+      if(file == NULL){
         f->eax = -1;
         return;
       }
-      f->eax = file_read_at(arg4, *(char**)arg2, *(unsigned*)arg3, 0);
+      f->eax = file_read_at(file, arg4, *(unsigned*)arg3, 0);
       break;
     case SYS_SEEK:
       arg1 = get_ptr(esp_tmp+4); //fd
@@ -188,8 +204,8 @@ syscall_handler (struct intr_frame *f)
         return;
       }
       lock_acquire (&file_lock);
-      arg3 = find_file(*(unsigned int*)arg1); // arg3 used as struct file *
-      file_seek(arg3, *(unsigned*)arg2);
+      file = find_file(*(unsigned int*)arg1);
+      file_seek(file, *(unsigned*)arg2);
       lock_release(&file_lock);
       break;
     case SYS_TELL:
@@ -199,8 +215,8 @@ syscall_handler (struct intr_frame *f)
         return;
       }
       lock_acquire (&file_lock);
-      arg2 = find_file(*(unsigned int*)arg1); // arg2 used as struct file *
-      f->eax = file_tell(arg2);
+      file = find_file(*(unsigned int*)arg1);
+      f->eax = file_tell(file);
       lock_release(&file_lock);
       break;
     case SYS_CLOSE: 
