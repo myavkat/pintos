@@ -126,6 +126,7 @@ process_exit (int exit_status)
   uint32_t *pd;
   char *save_ptr;
   printf("%s: exit(%d)\n", strtok_r(cur->name," ", &save_ptr), exit_status);
+  file_close(cur->executable_file);
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -268,9 +269,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", argv[0]);
+      file_close(file);
       goto done; 
     }
-
+  t->executable_file = file;
+  file_deny_write(t->executable_file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -358,7 +361,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   palloc_free_page (argv);
   palloc_free_page (fn);
-  file_close (file);
   return success;
 }
 

@@ -107,7 +107,7 @@ struct thread
     struct semaphore start_sema;
     bool start_success;
     int exit_status;
-
+    struct file *executable_file;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
