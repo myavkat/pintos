@@ -12,19 +12,21 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "pagedir.h"
+#include "threads/malloc.h"
 
 struct lock file_lock;
 
 struct thread_file_descriptor
 {
-   int fd;
+   unsigned int fd;
    struct file *file;
    struct list_elem file_elem;
 };
 static void *get_ptr(const unsigned char *uaddr);
 static void syscall_handler (struct intr_frame *);
-static struct file* find_file(int fd);
-static void close_file(struct list * cls_file, int fd);
+static struct file* find_file(unsigned int fd);
+static void close_file(struct list* cls_file, unsigned int fd);
+static unsigned int open_file(struct file* file);
 
 void
 syscall_init (void) 
@@ -70,7 +72,7 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      if(*(int*)arg1 == 1)
+      if(*(unsigned int*)arg1 == 1)
       {
         putbuf(*(char**)arg2, *(int*)arg3); // Write data to the console
       }
@@ -99,7 +101,12 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      f->eax = filesys_create (*(char **)arg1, *(int*)arg2);
+      arg3 = get_ptr(arg1);
+      if(arg3 == NULL){
+        thread_exit(-1);
+        return;
+      }
+      f->eax = filesys_create (arg3, *(int*)arg2);
       break;
     case SYS_REMOVE:
       arg1 = get_ptr(esp_tmp + 4); //file_name
@@ -107,21 +114,30 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      f->eax = filesys_remove (*(const char **)arg1); 
+      arg3 = get_ptr(*(void **)arg1);
+      if(arg3 == NULL){
+        thread_exit(-1);
+        return;
+      }
+      f->eax = filesys_remove (arg3); 
       break;
     case SYS_OPEN:
-      arg1 = get_ptr(esp_tmp + 4); //file_name
+      arg1 = get_ptr(esp_tmp + 4); //file_name pointer
       if(arg1 == NULL){
         thread_exit(-1);
         return;
       }
-      //TODOOOOOO
-      // arg2 = filesys_open (*(const char **)arg1);
-      // if(arg2 == NULL){
-      //   f->eax=-1;
-      //   return;
-      // }
-      // f->eax=(int)arg2;
+      arg3 = get_ptr(*(void **)arg1);
+      if(arg3 == NULL){
+        thread_exit(-1);
+        return;
+      }
+      arg2 = filesys_open (arg3); // arg2 as file *
+      if(arg2 == NULL){
+        f->eax=-1;
+        return;
+      }
+      f->eax = open_file(arg2);
       break;
     case SYS_FILESIZE:
       arg1 = get_ptr(esp_tmp + 4); //fd
@@ -129,7 +145,7 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      arg2 = find_file(*(int*)arg1); // arg2 used as struct file *
+      arg2 = find_file(*(unsigned int*)arg1); // arg2 used as struct file *
       if(arg2==NULL){
         f->eax = -1;
         return;
@@ -148,7 +164,7 @@ syscall_handler (struct intr_frame *f)
         f->eax=*(unsigned*)arg3;
         return;
       }
-      if(*(int*)arg1==0){
+      if(*(unsigned int*)arg1==0){
         i=0;
         while (i<(int)*(unsigned*)arg3){
           (*(char**)arg2)[i] = input_getc();
@@ -157,7 +173,7 @@ syscall_handler (struct intr_frame *f)
         f->eax = *(unsigned*)arg3;
         return;
       }
-      arg4 = find_file(*(int*)arg1); // arg4 used as struct file *
+      arg4 = find_file(*(unsigned int*)arg1); // arg4 used as struct file *
       if(arg4 == NULL){
         f->eax = -1;
         return;
@@ -172,7 +188,7 @@ syscall_handler (struct intr_frame *f)
         return;
       }
       lock_acquire (&file_lock);
-      arg3 = find_file(*(int*)arg1); // arg3 used as struct file *
+      arg3 = find_file(*(unsigned int*)arg1); // arg3 used as struct file *
       file_seek(arg3, *(unsigned*)arg2);
       lock_release(&file_lock);
       break;
@@ -183,7 +199,7 @@ syscall_handler (struct intr_frame *f)
         return;
       }
       lock_acquire (&file_lock);
-      arg2 = find_file(*(int*)arg1); // arg2 used as struct file *
+      arg2 = find_file(*(unsigned int*)arg1); // arg2 used as struct file *
       f->eax = file_tell(arg2);
       lock_release(&file_lock);
       break;
@@ -194,7 +210,7 @@ syscall_handler (struct intr_frame *f)
         return;
       }
       lock_acquire (&file_lock);
-      close_file(&thread_current()->file_descriptor_list, *(int*)arg1);
+      close_file(&thread_current()->file_descriptor_list, *(unsigned int*)arg1);
       lock_release(&file_lock);
       break;
   }
@@ -226,7 +242,7 @@ get_ptr(const unsigned char *uaddr)
 }
 
 static struct file*
-find_file(int fd){
+find_file(unsigned int fd){
   struct thread *cur = thread_current();
   struct list_elem *f_elem = list_head (&cur->file_descriptor_list);
   struct thread_file_descriptor *file_descriptor;
@@ -244,8 +260,23 @@ find_file(int fd){
   return file_descriptor->file;
 }
 
+static unsigned int open_file(struct file* file)
+{
+  struct thread *cur = thread_current();
+  struct list_elem *last_file_elem = list_rbegin(&cur->file_descriptor_list);
+  unsigned int new_fd = 2; // if list is empty start from 2
+  if(last_file_elem != &cur->file_descriptor_list.head){
+    // if list has elements new fd is last element's fd + 1
+    new_fd = list_entry(last_file_elem, struct thread_file_descriptor, file_elem)->fd + 1;
+  }
+  struct thread_file_descriptor *tfd = malloc(sizeof(*tfd));
+  tfd->fd = new_fd;
+  tfd->file = file;
+  list_push_back(&cur->file_descriptor_list, &tfd->file_elem);
+  return new_fd;
+}
 static void 
-close_file(struct list * cls_file, int fd)
+close_file(struct list * cls_file, unsigned int fd)
 {
   struct list_elem * e;
   struct thread_file_descriptor * tfd;
