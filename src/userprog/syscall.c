@@ -21,12 +21,8 @@ struct thread_file_descriptor
    struct file *file;
    struct list_elem file_elem;
 };
-
-static int get_user (const uint32_t *uaddr) ;
-// static bool put_user (uint32_t *udst, uint8_t byte) ;
-static bool is_valid_ptr(const uint32_t *uaddr, int args);
+static void *get_ptr(const unsigned char *uaddr);
 static void syscall_handler (struct intr_frame *);
-static bool is_valid_ref(const char **uaddr, unsigned size);
 static struct file* find_file(int fd);
 static void close_file(struct list * cls_file, int fd);
 
@@ -39,285 +35,194 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  if(!is_valid_ptr(f->esp, 1)){
-        thread_exit(-1);
-        return;
+  const unsigned char *esp_tmp = f->esp;
+  void *arg0 = get_ptr(esp_tmp);
+  if(arg0 == NULL)
+  {
+    thread_exit(-1);
+    return;
   }
-  int syscall_no = *(int*)f->esp; // Read the system call from f->esp
-  int exit_status;
-  const char *buffer;
-  int size;
-  int fd;
-  const char **file_name_ptr;
-  struct file *file;
+  int syscall_no = *(int *)arg0; // Read the system call from f->esp
+  void *arg1;
+  void *arg2;
+  void *arg3;
+  void *arg4;
   int i;
-  void * ptr;
   switch (syscall_no){
     case SYS_HALT:
       shutdown_power_off(); // Function to halt the machine
       break;
       
-    case SYS_EXIT: 
-      if(!is_valid_ptr(f->esp, 2)){
+    case SYS_EXIT:
+      arg1 = get_ptr(esp_tmp + 4); // exit_status
+      if(arg1 == NULL){
         thread_exit(-1);
         return;
       }
-      exit_status = *(int *)(f->esp + 4); // Read exit status from f->esp (stack)
-
-      thread_exit(exit_status); // Terminates the current process
+      thread_exit(*(int *)arg1); // Terminates the current process
       break;
     
-    case SYS_WRITE: 
-      if(!is_valid_ptr(f->esp, 4)){
+    case SYS_WRITE:
+      arg1 = get_ptr(esp_tmp + 4); //fd
+      arg2 = get_ptr(esp_tmp + 8); // buffer
+      arg3 = get_ptr(esp_tmp + 12); // size
+      if(arg1 == NULL || arg2 == NULL || arg3 == NULL){
         thread_exit(-1);
         return;
       }
-      
-      fd = *(int*)(f->esp + 4);
-      buffer = *(char**)(f->esp + 8); // Read buffer pointer
-      size = *(int*)(f->esp + 12); // Read number of bytes
-      if(fd == 1)
+      if(*(int*)arg1 == 1)
       {
-        putbuf(buffer, size); // Write data to the console
+        putbuf(*(char**)arg2, *(int*)arg3); // Write data to the console
       }
       break;
     case SYS_EXEC:
-        if(!is_valid_ptr(f->esp, 2)){
-          thread_exit(-1);
-          return;
-        }
-        char **cmd_line = (char **)(f->esp + 4);
-        f->eax = process_execute(*cmd_line);
+      arg1 = get_ptr(esp_tmp + 4); //cmd_line
+      if(arg1 == NULL){
+        thread_exit(-1);
+        return;
+      }
+      f->eax = process_execute(*(char **)arg1);
       break;
     case SYS_WAIT:
-        if(!is_valid_ptr(f->esp, 2)){
-          thread_exit(-1);
-          return;
-        }
-        int child_pid = *(int*)(f->esp + 4);
-        f->eax = process_wait(child_pid);
+      arg1 = get_ptr(esp_tmp + 4); //child_pid
+      if(arg1 == NULL){
+        thread_exit(-1);
         return;
+      }
+      f->eax = process_wait(*(int*)arg1);
+      return;
       break;
     case SYS_CREATE:
-      if(!is_valid_ptr(f->esp, 3)){
+      arg1 = get_ptr(esp_tmp + 4); //file_name
+      arg2 = get_ptr(esp_tmp + 8); //initial_size
+      if(arg1 == NULL || arg2 == NULL){
         thread_exit(-1);
         return;
       }
-      file_name_ptr = (const char **)(f->esp + 4);
-      if(!is_valid_ref(file_name_ptr, INT32_MAX)){
-        thread_exit(-1);
-        return;
-      }
-      unsigned initial_size = *(int*)(f->esp + 8);
-      f->eax = filesys_create (*file_name_ptr, initial_size);
+      f->eax = filesys_create (*(char **)arg1, *(int*)arg2);
       break;
     case SYS_REMOVE:
-      if(!is_valid_ptr(f->esp, 2)){
+      arg1 = get_ptr(esp_tmp + 4); //file_name
+      if(arg1 == NULL){
         thread_exit(-1);
         return;
       }
-      file_name_ptr = (const char **)(f->esp + 4);
-      if(!is_valid_ref(file_name_ptr, INT32_MAX)){
-        thread_exit(-1);
-        return;
-      }
-      f->eax = filesys_remove (*file_name_ptr); 
+      f->eax = filesys_remove (*(const char **)arg1); 
       break;
     case SYS_OPEN:
-      if(!is_valid_ptr(f->esp, 2)){
+      arg1 = get_ptr(esp_tmp + 4); //file_name
+      if(arg1 == NULL){
         thread_exit(-1);
         return;
       }
-      file_name_ptr = (const char **)(f->esp + 4);
-      if(!is_valid_ref(file_name_ptr, INT32_MAX)){
-        thread_exit(-1);
-        return;
-      }
-      file = filesys_open (*file_name_ptr);
-      if(file == NULL){
-        f->eax=-1;
-        return;
-      }
-      f->eax=(int)file;
+      //TODOOOOOO
+      // arg2 = filesys_open (*(const char **)arg1);
+      // if(arg2 == NULL){
+      //   f->eax=-1;
+      //   return;
+      // }
+      // f->eax=(int)arg2;
       break;
     case SYS_FILESIZE:
-      if(!is_valid_ptr(f->esp, 2)){
+      arg1 = get_ptr(esp_tmp + 4); //fd
+      if(arg1 == NULL){
         thread_exit(-1);
         return;
       }
-      fd = *(int*)(f->esp + 4);
-      file = find_file(fd);
-      if(file==NULL){
+      arg2 = find_file(*(int*)arg1); // arg2 used as struct file *
+      if(arg2==NULL){
         f->eax = -1;
         return;
       }
-      f->eax = file_length (file);
+      f->eax = file_length (arg2);
       break;
     case SYS_READ:
-      if(!is_valid_ptr(f->esp, 4)){
+      arg1 = get_ptr(esp_tmp + 4); //fd
+      arg2 = get_ptr(esp_tmp + 8); // buffer
+      arg3 = get_ptr(esp_tmp + 12); // size
+      if(arg1 == NULL || arg2 == NULL || arg3 == NULL){
         thread_exit(-1);
         return;
       }
-      fd = *(int*)(f->esp + 4);
-      const char **buffer_ptr = (char**)(f->esp + 8);
-      unsigned size = *(unsigned*)(f->esp + 12);
-      if(size <=0){
-        f->eax=size;
+      if(*(unsigned*)arg3 <=0){
+        f->eax=*(unsigned*)arg3;
         return;
       }
-      if(!is_valid_ref(buffer_ptr, size)){
-        f->eax=-1;
-        return;
-      }
-      char *buffer = *buffer_ptr;
-      if(fd==0){
+      if(*(int*)arg1==0){
         i=0;
-        while (i<(int)size){
-          buffer[i] = input_getc();
+        while (i<(int)*(unsigned*)arg3){
+          (*(char**)arg2)[i] = input_getc();
           i++;
         }
-        f->eax = size;
+        f->eax = *(unsigned*)arg3;
         return;
       }
-      file = find_file(fd);
-      if(file == NULL){
+      arg4 = find_file(*(int*)arg1); // arg4 used as struct file *
+      if(arg4 == NULL){
         f->eax = -1;
         return;
       }
-      f->eax = file_read_at(file, buffer, size, 0);
+      f->eax = file_read_at(arg4, *(char**)arg2, *(unsigned*)arg3, 0);
       break;
     case SYS_SEEK:
-      if (!is_valid_ptr(f->esp, 3)){
-          thread_exit(-1);
-          return;
-      }
-      ptr = pagedir_get_page(thread_current()->pagedir, f->esp+4);
-      if (!ptr){
-          thread_exit(-1);
-          return;
+      arg1 = get_ptr(esp_tmp+4); //fd
+      arg2 = get_ptr(esp_tmp+8); //offset
+      if(arg1 == NULL || arg2 == NULL){
+        thread_exit(-1);
+        return;
       }
       lock_acquire (&file_lock);
-      fd = *(int*)(f->esp + 4);
-      unsigned ofs = *(unsigned*)(f->esp + 8);
-      file = find_file(fd);
-      file_seek(file, ofs);
+      arg3 = find_file(*(int*)arg1); // arg3 used as struct file *
+      file_seek(arg3, *(unsigned*)arg2);
       lock_release(&file_lock);
       break;
     case SYS_TELL:
-      if (!is_valid_ptr(f->esp,2)){
-      thread_exit(-1);
-      return;
-      }
-      ptr = pagedir_get_page(thread_current()->pagedir, f->esp + 4);
-      if (!ptr){
-          thread_exit(-1);
-          return;
+      arg1 = get_ptr(esp_tmp + 4); //fd
+      if(arg1 == NULL){
+        thread_exit(-1);
+        return;
       }
       lock_acquire (&file_lock);
-      fd = *(int*)(f->esp + 4);
-      file = find_file(fd);
-      f->eax = file_tell(file);
+      arg2 = find_file(*(int*)arg1); // arg2 used as struct file *
+      f->eax = file_tell(arg2);
       lock_release(&file_lock);
       break;
     case SYS_CLOSE: 
-      if (!is_valid_ptr(f->esp,2)){
-          thread_exit(-1);
-          return;
+      arg1 = get_ptr(esp_tmp + 4); //fd
+      if(arg1 == NULL){
+        thread_exit(-1);
+        return;
       }
-      ptr = pagedir_get_page(thread_current()->pagedir, f->esp + 4);
-      if (!ptr){
-          thread_exit(-1);
-          return;
-      }
-
       lock_acquire (&file_lock);
-      fd = *(int*)(f->esp + 4);
-      close_file(&thread_current()->file_descriptor_list, fd);
+      close_file(&thread_current()->file_descriptor_list, *(int*)arg1);
       lock_release(&file_lock);
       break;
   }
   
 }
 
-static void close_file(struct list * cls_file, int fd){
-
-    struct list_elem * e;
-    struct thread_file_descriptor * tfd;
-
-    for (e = list_begin(cls_file); e != list_end(cls_file); e = list_next(e)){
-            tfd = list_entry(e, struct thread_file_descriptor, file_elem);
-            if(tfd->fd == fd){
-                file_close(tfd->file);
-                  list_remove(e);
-            }
-        }
-} 
-
-/* Reads a byte at user virtual address UADDR.
-   UADDR must be below PHYS_BASE.
-   Returns the byte value if successful, -1 if a segfault
-   occurred. */
-static int
-get_user (const uint32_t *uaddr)
+static void *
+get_ptr(const unsigned char *uaddr)
 {
-  int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:"
-       : "=&a" (result) : "m" (*uaddr));
-  return result;
-}
-
-// /* Writes BYTE to user address UDST.
-//    UDST must be below PHYS_BASE.
-//    Returns true if successful, false if a segfault occurred. */
-// static bool
-// put_user (uint8_t *udst, uint8_t byte)
-// {
-//   int error_code;
-//   asm ("movl $1f, %0; movb %b2, %1; 1:"
-//        : "=&a" (error_code), "=m" (*udst) : "q" (byte));
-//   return error_code != -1;
-// }
-
-static bool
-is_valid_ptr(const uint32_t *uaddr, int args){
-  int size = args*4;
-  if(uaddr==NULL){
-    return false;
-  }
-  if(!is_user_vaddr(uaddr) || !is_user_vaddr(uaddr + size)){
-    return false;
-  }
-  for (int i = 0; i < size; i++)
+  if(uaddr==NULL)
   {
-    if(get_user(uaddr+i)==-1){
-      return false;
-    }
+    return NULL;
   }
-  return true;
-}
 
-static bool
-is_valid_ref(const char **uaddr, unsigned size){
-  if(get_user((uint32_t *)*uaddr) == -1){
-    return false;
-  }
-  if(*uaddr == NULL){
-    return false;
-  }
-  const char *str = *uaddr;
-  int i = 0;
-
-  while (*(str + i) != '\0' && i<size)
+  if(!is_user_vaddr(uaddr) || !is_user_vaddr(uaddr + 3))
   {
-    if(get_user((uint32_t *)(str + i + 1)) == -1){
-      return false;
-    }
-    i++;
+    return NULL;
   }
-  if(*uaddr == NULL){
-    return false;
+
+  if(uaddr < (void *)0x08048000UL)
+  {
+    return NULL;
   }
-  return true;
+  if(pagedir_get_page(thread_current()->pagedir, uaddr+3) == NULL)
+  {
+    return NULL;
+  }
+  return pagedir_get_page(thread_current()->pagedir, uaddr);
 }
 
 static struct file*
@@ -337,4 +242,20 @@ find_file(int fd){
     return NULL;
   }
   return file_descriptor->file;
+}
+
+static void 
+close_file(struct list * cls_file, int fd)
+{
+  struct list_elem * e;
+  struct thread_file_descriptor * tfd;
+
+  for (e = list_begin(cls_file); e != list_end(cls_file); e = list_next(e))
+  {
+    tfd = list_entry(e, struct thread_file_descriptor, file_elem);
+    if(tfd->fd == fd){
+      file_close(tfd->file);
+      list_remove(e);
+    }
+  }
 }
