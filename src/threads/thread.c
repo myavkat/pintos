@@ -283,6 +283,7 @@ thread_tid (void)
 void
 thread_exit (int exit_status) 
 {
+  struct thread *cur = thread_current ();
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
@@ -290,23 +291,23 @@ thread_exit (int exit_status)
 #endif
 
   // wait for all child processes to exit
-  for (struct list_elem *child_elem = list_begin (&thread_current ()->children_list);
-        child_elem != list_end (&thread_current ()->children_list); )
+  for (struct list_elem *child_elem = list_begin (&cur->children_list);
+        child_elem != list_end (&cur->children_list); )
   {
     struct thread *t = list_entry (child_elem, struct thread, parent_elem);
     child_elem = list_remove (child_elem);
     sema_up (&t->exit_sema);
   }
-
-  sema_up (&thread_current ()->wait_sema);
-  sema_down (&thread_current ()->exit_sema);
+  cur->exit_status = exit_status;
+  sema_up (&cur->wait_sema);
+  sema_down (&cur->exit_sema);
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
+  list_remove (&cur->allelem);
+  cur->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
