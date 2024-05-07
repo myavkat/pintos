@@ -81,8 +81,18 @@ syscall_handler (struct intr_frame *f)
       }
       if(*(unsigned int*)arg1 == 1)
       {
+        lock_acquire (&file_lock);
         putbuf(arg4, *(int*)arg3); // Write data to the console
+        lock_release (&file_lock);
       }
+      file = find_file(*(unsigned int*)arg1);
+      if(file==NULL){
+        f->eax = -1;
+        return;
+      }
+      lock_acquire (&file_lock);
+      f->eax = file_write(file, arg2, *(off_t *)arg3);
+      lock_release (&file_lock);
       break;
     case SYS_EXEC:
       arg1 = get_ptr(esp_tmp + 4); //cmd_line
