@@ -128,6 +128,15 @@ process_exit (int exit_status)
   char *save_ptr;
   printf("%s: exit(%d)\n", strtok_r(cur->name," ", &save_ptr), exit_status);
   lock_acquire(&filesys_lock);
+  // close all files
+  for (struct list_elem *f_elem = list_begin (&cur->file_descriptor_list);
+        f_elem != list_end (&cur->file_descriptor_list); )
+  {
+    struct thread_file_descriptor *tfd = list_entry (f_elem, struct thread_file_descriptor, file_elem);
+    f_elem = list_remove (f_elem);
+    file_close(tfd->file);
+    free(tfd);
+  }
   file_close(cur->executable_file);
   lock_release(&filesys_lock);
   /* Destroy the current process's page directory and switch back
@@ -241,6 +250,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
+  lock_acquire(&filesys_lock);
   //parse argv and argc from file_name
   char *fn = palloc_get_page(PAL_USER);
   strlcpy(fn, file_name, strlen(file_name) + 1);
@@ -268,9 +278,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  lock_acquire(&filesys_lock);
   file = filesys_open (argv[0]);
-  lock_release(&filesys_lock);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", argv[0]);
@@ -359,11 +367,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   success = true;
 
-  lock_acquire(&filesys_lock);
   file_deny_write(file);
-  lock_release(&filesys_lock);
 
  done:
+  lock_release(&filesys_lock);
   t->executable_file = file;
   /* We arrive here whether the load is successful or not. */
   palloc_free_page (argv);

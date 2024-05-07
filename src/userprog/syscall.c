@@ -15,12 +15,6 @@
 #include "threads/malloc.h"
 
 
-struct thread_file_descriptor
-{
-   unsigned int fd;
-   struct file *file;
-   struct list_elem file_elem;
-};
 static void *get_ptr(const unsigned char *uaddr);
 static void syscall_handler (struct intr_frame *);
 static struct file* find_file(unsigned int fd);
@@ -109,11 +103,11 @@ syscall_handler (struct intr_frame *f)
       while ((child_elem = list_next (child_elem)) != list_end (&thread_current()->children_list)) 
       {
         child = list_entry(child_elem,struct thread, parent_elem);
-        if(f->eax == child->tid){
+        if(f->eax == (uint32_t)child->tid){
           break;
         }
       }
-      if(child->tid != f->eax){
+      if((uint32_t)child->tid != f->eax){
         f->eax = -1;
         return;
       }
@@ -292,7 +286,7 @@ get_ptr(const unsigned char *uaddr)
     return NULL;
   }
 
-  if(uaddr < (void *)0x08048000UL)
+  if(uaddr < (unsigned char *)(void *)0x08048000UL)
   {
     return NULL;
   }

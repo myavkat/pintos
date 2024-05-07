@@ -484,6 +484,7 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init (&t->start_sema, 0);
   list_init (&t->children_list);
   list_init (&t->file_descriptor_list);
+  t->executable_file == NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
