@@ -14,6 +14,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "malloc.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -185,7 +186,6 @@ thread_create (const char *name, int priority,
 
   list_push_back (&thread_current ()->children_list, &t->parent_elem);
 
-
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -301,7 +301,6 @@ thread_exit (int exit_status)
   cur->exit_status = exit_status;
   sema_up (&cur->wait_sema);
   sema_down (&cur->exit_sema);
-
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */

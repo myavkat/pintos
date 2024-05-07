@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -259,7 +260,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
-
+  
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -267,14 +268,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire(&filesys_lock);
   file = filesys_open (argv[0]);
+  lock_release(&filesys_lock);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", argv[0]);
       goto done; 
     }
-  t->executable_file = file;
-  file_deny_write(t->executable_file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -358,7 +359,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   success = true;
 
+  lock_acquire(&filesys_lock);
+  file_deny_write(file);
+  lock_release(&filesys_lock);
+
  done:
+  t->executable_file = file;
   /* We arrive here whether the load is successful or not. */
   palloc_free_page (argv);
   palloc_free_page (fn);
