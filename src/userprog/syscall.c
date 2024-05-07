@@ -90,12 +90,31 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      arg3 = get_ptr(*(void **)arg1);
-      if(arg3 == NULL){
+      arg2 = get_ptr(*(void **)arg1);
+      if(arg2 == NULL){
         thread_exit(-1);
         return;
       }
-      f->eax = process_execute(arg3);
+      f->eax = process_execute(arg2);
+      struct thread *child;
+      struct list_elem *child_elem = &thread_current()->children_list.head;
+      while ((child_elem = list_next (child_elem)) != list_end (&thread_current()->children_list)) 
+      {
+        child = list_entry(child_elem,struct thread, parent_elem);
+        if(f->eax == child->tid){
+          break;
+        }
+      }
+      if(child->tid != f->eax){
+        f->eax = -1;
+        return;
+      }
+      sema_down(&child->start_sema);
+      if(child->start_success == false){
+        sema_up(&child->exit_sema);
+        f->eax = -1;
+        return;
+      }
       break;
     case SYS_WAIT:
       arg1 = get_ptr(esp_tmp + 4); //child_pid

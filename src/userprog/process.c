@@ -61,12 +61,16 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-
+  thread_current() -> pid = thread_current() -> tid;
   /* If load failed, quit. */
   palloc_free_page (file_name);
+
+  thread_current()->start_success = success;
+  sema_up(&thread_current()->start_sema);
+
   if (!success) 
     thread_exit (-1);
-  thread_current() -> pid = thread_current() -> tid;
+
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its

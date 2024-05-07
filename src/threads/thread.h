@@ -104,6 +104,8 @@ struct thread
 #endif
     struct semaphore exit_sema;
     struct semaphore wait_sema;
+    struct semaphore start_sema;
+    bool start_success;
     int exit_status;
 
     /* Owned by thread.c. */
