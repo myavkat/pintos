@@ -32,6 +32,7 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init (&file_lock);
 }
 
 static void
@@ -117,7 +118,9 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      f->eax = filesys_create (arg3, *(int*)arg2);
+      lock_acquire (&file_lock);
+      f->eax = filesys_create (arg3, *(unsigned int*)arg2);
+      lock_release (&file_lock);
       break;
     case SYS_REMOVE:
       arg1 = get_ptr(esp_tmp + 4); //file_name
@@ -130,7 +133,9 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
+      lock_acquire (&file_lock);
       f->eax = filesys_remove (arg3); 
+      lock_release (&file_lock);
       break;
     case SYS_OPEN:
       arg1 = get_ptr(esp_tmp + 4); //file_name pointer
@@ -143,7 +148,9 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
+      lock_acquire (&file_lock);
       file = filesys_open (arg3); 
+      lock_release (&file_lock);
       if(file == NULL){
         f->eax=-1;
         return;
@@ -161,7 +168,9 @@ syscall_handler (struct intr_frame *f)
         f->eax = -1;
         return;
       }
+      lock_acquire (&file_lock);
       f->eax = file_length (file);
+      lock_release (&file_lock);
       break;
     case SYS_READ:
       arg1 = get_ptr(esp_tmp + 4); //fd
@@ -194,7 +203,9 @@ syscall_handler (struct intr_frame *f)
         f->eax = -1;
         return;
       }
+      lock_acquire (&file_lock);
       f->eax = file_read_at(file, arg4, *(unsigned*)arg3, 0);
+      lock_release (&file_lock);
       break;
     case SYS_SEEK:
       arg1 = get_ptr(esp_tmp+4); //fd
@@ -203,8 +214,8 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      lock_acquire (&file_lock);
       file = find_file(*(unsigned int*)arg1);
+      lock_acquire (&file_lock);
       file_seek(file, *(unsigned*)arg2);
       lock_release(&file_lock);
       break;
@@ -214,8 +225,8 @@ syscall_handler (struct intr_frame *f)
         thread_exit(-1);
         return;
       }
-      lock_acquire (&file_lock);
       file = find_file(*(unsigned int*)arg1);
+      lock_acquire (&file_lock);
       f->eax = file_tell(file);
       lock_release(&file_lock);
       break;
@@ -303,6 +314,8 @@ close_file(struct list * cls_file, unsigned int fd)
     if(tfd->fd == fd){
       file_close(tfd->file);
       list_remove(e);
+      free(tfd);
+      break;
     }
   }
 }
