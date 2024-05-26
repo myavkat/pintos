@@ -97,6 +97,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct list map_table_entries;        /* Virtual memory mappings*/
     struct list_elem parent_elem;       /* Parent thread's children_list elem */
     struct list children_list;          /* Process's children */
     int pid;                          /* Process id */

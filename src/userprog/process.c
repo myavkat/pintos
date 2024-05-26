@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
+#include "vm/map_table.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -251,18 +252,6 @@ bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
   lock_acquire(&filesys_lock);
-  //parse argv and argc from file_name
-  char *fn = palloc_get_page(PAL_USER);
-  strlcpy(fn, file_name, strlen(file_name) + 1);
-
-  char *save_ptr, *token;
-  char **argv = palloc_get_page(PAL_USER);
-  int argc = 0;
-  for (token = strtok_r (fn, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
-  {
-    argv[argc] = token;
-    argc++;
-  }
 
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -276,6 +265,25 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+
+  //parse argv and argc from file_name
+  void *fn_addr = (void *)(0x0+PGSIZE);
+  struct MapTableEntry mte_fn = {.map_type = FRAME, .virtual_address = fn_addr};
+  add_vm_entry(t->map_table_entries, t->pagedir, mte_fn);
+  char *fn = pagedir_get_page(t->pagedir, fn_addr);
+  strlcpy(fn, file_name, strlen(file_name) + 1);
+
+  char *save_ptr, *token;
+  void *argv_addr = (void *)(0x0 + 2 * PGSIZE);
+  struct MapTableEntry mte_argv = {.map_type = FRAME, .virtual_address = argv_addr};
+  add_vm_entry(t->map_table_entries, t->pagedir, mte_argv);
+  char **argv = pagedir_get_page(t->pagedir, argv_addr);
+  int argc = 0;
+  for (token = strtok_r (fn, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
+  {
+    argv[argc] = token;
+    argc++;
+  }
 
   /* Open executable file. */
   file = filesys_open (argv[0]);
@@ -373,8 +381,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   lock_release(&filesys_lock);
   t->executable_file = file;
   /* We arrive here whether the load is successful or not. */
-  palloc_free_page (argv);
-  palloc_free_page (fn);
+  remove_vm_entry(t->map_table_entries, t->pagedir, mte_argv.map_table_elem);
+  remove_vm_entry(t->map_table_entries, t->pagedir, mte_fn.map_table_elem);
   return success;
 }
 
@@ -458,25 +466,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+      struct thread *t = thread_current();
+      struct MapTableEntry mte = { .virtual_address = upage, .map_type = FRAME};
+      if(!add_vm_entry(t->map_table_entries, t->pagedir, mte))
         return false;
-
+      uint8_t *kpage = pagedir_get_page(t->pagedir, upage);
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
+          remove_vm_entry(t->map_table_entries,t->pagedir,mte.map_table_elem);
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -493,16 +495,14 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
-
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+  struct thread *t = thread_current();
+  struct MapTableEntry mte = {.map_type = FRAME, .virtual_address = ((uint8_t *) PHYS_BASE) - PGSIZE};
+  success = add_vm_entry(t->map_table_entries, t->pagedir, mte);
+  if (success)
         *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
+  else
+    remove_vm_entry(t->map_table_entries,t->pagedir,mte.map_table_elem);
+  
   return success;
 }
 
