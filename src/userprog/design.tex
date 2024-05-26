@@ -94,9 +94,9 @@
 
 \title{INF333 2023-2024 Spring Semester}
 \author{
-\textbf{\color{blue}{Şirinler}} {\small(your group name, use an appropriate color)}
-\\ Student 1 Name <stu1@gsu.edu.tr>
-\\ Student 2 Name <stu2@gsu.edu.tr>}
+\textbf{\color{few-purple-bright}{Çiçekler}} 
+\\ Mehmet Yavuz Katrancı <20401875@ogr.gsu.edu.tr>
+\\ Elif Kına <20401889@ogr.gsu.edu.tr>}
 
 \begin{document}
 
@@ -105,21 +105,19 @@
 \section*{\LARGE Homework II \\
   Design Document}
 
-Please provide answers inline in a \texttt{quote} environment.
-
 
 \section{Preliminaries}
 
 \textbf{Q1:} If you have any preliminary comments on your submission, notes for the TAs, or extra credit, please give them here.
 \begin{quote}
-  Answer here
+  
 \end{quote}
 
 
 \textbf{Q2:} Please cite any offline or online sources you consulted while preparing your
 submission, other than the Pintos documentation, course text, and lecture notes.
 \begin{quote}
-  Answer here
+  \href{https://pkuflyingpig.gitbook.io/pintos/project-description/lab2-user-programs}{An online and prettier version of the documentation.}
 \end{quote}
 
 
@@ -131,7 +129,17 @@ submission, other than the Pintos documentation, course text, and lecture notes.
 
 Identify the purpose of each in 25 words or less.
 \begin{quote}
-  Answer here
+  \begin{verbatim}
+   struct lock filesys_lock;
+  \end{verbatim}
+  \&
+  \begin{verbatim}
+   filesys_init (bool format){
+   lock_init (&filesys_lock);
+   ...
+   }
+  \end{verbatim}
+  these parts have been added as a way to fix synchronization problems but have also been used for argument passing which is also used in system calls. (more in Q7).
 \end{quote}
 
 
@@ -141,19 +149,20 @@ Identify the purpose of each in 25 words or less.
 \textbf{Q4:} Briefly describe how you implemented argument parsing.  How do you arrange for the elements of \texttt{argv[]} to be in the right order? How do you avoid overflowing the stack page?
 
 \begin{quote}
-  Answer here
+  Firstly we add the argv strings in the reverse order by decreasing the esp pointer by the string's length (plus one for the zero at the end). And we store the pointers at the stack to these strings in an array to later add them to the stack. Since the strings can be of different size than multiples of 4, we align the stack pointer towards zero to a multiple of 4 (because MMU is faster with multiples of 4). Then we add the pointers to the strings we saved earlier in the reverse order to the stack. Then we push the stack pointer of the argv[0] (which is added the last) to the stack and zero out the next 3 bytes and copy the value of argc to the next byte. Lastly we push a fake return address of 0. 
 \end{quote}
 
 \subsection{Rationale}
 
 \textbf{Q5:} Why does Pintos implement \texttt{strtok\_r()} but not \texttt{strtok()}?
 \begin{quote}
-  Answer here
+  Because strtok\_r is thread safe while strtok is not and pintos has thread preemption and our thread could be cut off at any time.
 \end{quote}
 
 \textbf{Q6:} In Pintos, the kernel separates commands into an executable name and arguments.  In Unix-like systems, the shell does this separation.  Identify at least two advantages of the Unix approach.
 \begin{quote}
-  Answer here
+    1. Less complex kernel code on Unix because they don't need to do the separation on kernel side.
+    2. In pintos, full path of the file must be passed to the kernel while shell can search the path for the file and return the full file name to the kernel.
 \end{quote}
 
 
@@ -163,99 +172,117 @@ Identify the purpose of each in 25 words or less.
 
 \textbf{Q7:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less
 \begin{quote}
-  Answer here
+  \begin{verbatim}
+   struct thread{
+   ...
+   #ifdef USERPROG
+   /* Owned by userprog/process.c. */
+   ...
+   struct list_elem parent_elem;       /* Parent thread's children_list elem */
+   struct list children_list;          /* Process's children */
+   int pid;                          /* Process id */
+   struct list file_descriptor_list;
+   #endif
+   ...
+   struct semaphore exit_sema;
+   struct semaphore wait_sema;
+   struct semaphore start_sema;
+   bool start_success;
+   int exit_status;
+   struct file *executable_file;
+   ...
+   }
+  \end{verbatim}
+  parent\_elem is used for matching the children of the parent with the parent while children\_list is the list of the children of a thread's.
+  pid is process id and usually equals to tid (thread id).
+  to make sure that the processes are "put into a line" for the system call exec, exit\_sema, wait\_sema, start\_sema have been utilized.
+  start\_success is for keeping the process's success/failure.
+  exit\_status is for the process's exit status number, so that we can tell which "error no" is the reason for the end of the process (of course, error no = 0 means success).
+  executable\_file is to keep the executable file open and deny writes to it.
+  \begin{verbatim}
+   struct thread_file_descriptor {
+      unsigned int fd;
+      struct file *file;
+      struct list_elem file_elem;
+   };
+  \end{verbatim}
+  this struct is used to manage file descriptors. It provides a way to associate file descriptor values with their matching file details that is open on a thread and held in the file\_descriptor\_list.
+  \begin{verbatim}
+   struct lock filesys_lock;
+  \end{verbatim}
+  \&
+  \begin{verbatim}
+   filesys_init (bool format){
+   lock_init (&filesys_lock);
+   ...
+   }
+  \end{verbatim}
+  Since we need a lock to make sure processes do not "interrupt" others in filesys which is a critical point in the kernel, we created a lock in filesys.h and then initialized it in filesys.c 
 \end{quote}
 
 \textbf{Q8:} Describe how file descriptors are associated with open files. Are file descriptors unique within the entire OS or just within a single process?
 \begin{quote}
-  Answer here
+    Each thread has a list of a new struct called thread file descriptor, which has fd (file descriptor) and open file as it's contents. fd is started from 1 if there is no element in the list or the last element's fd plus one if there is elements in the list. Thus file descriptors are unique just within a single process.
 \end{quote}
 
 \textbf{Q9:} Describe the sequence of events when \texttt{lock\_release()} is called on a lock that a higher-priority thread is waiting for.
 \begin{quote}
-  Answer here
+    Current thread continues it's execution until the thread preemption deschedules it and scheduler schedules higher priority thread.
 \end{quote}
 
 \subsection{Algorithms}
 
 \textbf{Q10:} Describe your code for reading and writing user data from the kernel.
 \begin{quote}
-  Answer here
+  Our code sends the pointer to be checked to a function called getptr, this function checks if the pointer is NULL or is not from User address section (checks both first and last byte to prevent in between addresses causing page faults) or the output of the pagedir get page function is NULL and returns NULL if it is or the result of the pagedir get page function. Then we check the output of the function in the syscall handler and if it is bad we take the required actions (thread exit or return -1 in eax). Else, we can just use it as a normal pointer to read and write to.  
 \end{quote}
 
-\textbf{Q11:} Suppose a system call causes a full page (4,096 bytes) of data to be copied from user space into the kernel.  What is the least and the greatest possible number of inspections of the page table (e.g. calls to \texttt{pagedir\_get\_page())} that might result?  What about for a system call that only copies 2 bytes of data?  Is there room for improvement in these numbers, and how much?
+\textbf{Q11:} Suppose a system call causes a full page (4,096 bytes) of data to be copied from user space into the kernel.  What is the least and the greatest possible number of inspections of the page table (e.g. calls to \texttt{pagedir\_get\_page())} that might result?  What about a system call that only copies 2 bytes of data?  Is there room for improvement in these numbers, and how much?
 \begin{quote}
-  Answer here
+  For a page table; the least inspections occur when the entire data resides within a single page and the number of inspections would be 1, for translation from the user's virtual address to a physical address, the greatest inspections occur when each byte of the data is on a different page, but the number of inspections would still be 1 (for a full page).
+  For 2 bytes of data, the situations are similar to the page table; the least inspections occur when both bytes reside on a single page and the number of inspections would be 1 (for translation from the user's virtual address to a physical address), the greatest inspections occur when each byte is on a different page, but the number of inspections would be 2.
+  Pintos uses single-level page tables for simplicity. However, for larger address spaces, this can lead to many page table lookups. By using multi-level page tables, the number of inspections can be greatly reduced which also improves system performance, especially for memory-intensive operations.
 \end{quote}
 
 \textbf{Q12:} Briefly describe your implementation of the "wait" system call and how it interacts with process termination.
 \begin{quote}
-  Answer here
+  Process wait checks if the given pid corresponds to a child of the caller thread. And if it does, waits for the wait sema of the child process to be upped when the child process enters the exit function uppind the wait sema and downing the exit sema to let the parent obtain the required informations from the child process. After the parent has acquired the informations it lets the child process to die by upping the exit sema of the child process.
 \end{quote}
 
 \textbf{Q13:} Any access to user program memory at a user-specified address can fail due to a bad pointer value.  Such accesses must cause the process to be terminated.  System calls are fraught with such accesses, e.g. a "write" system call requires reading the system call number from the user stack, then each of the call's three arguments, then an arbitrary amount of user memory, and any of these can fail at any point.  This poses a design and error-handling problem: how do you best avoid obscuring the primary function of code in a morass of error-handling?  Furthermore, when an error is detected, how do you ensure that all temporarily allocated resources (locks, buffers, etc.) are freed?  In a few paragraphs, describe the strategy or strategies you adopted for managing these issues.  Give an example.
 \begin{quote}
-  Answer here
+  Error checks, our code performs null pointer checks for fd, buffer, and size before proceeding. This avoids unnecessary processing if the user provides invalid arguments.
+  The \textit{get\_ptr} function encapsulates user memory validation logic. It checks for valid user virtual addresses and ensures the corresponding page is present in the page table, while also checking for NULL pointers. With this, reusability and the main system call function cleanliness are tried to be ensured.
+  Locks, our code acquire the filesys\_lock before accessing the file system for both console writes and file writes. This ensures mutual exclusion and data consistency. The lock is released promptly after the operation, minimizing the critical section.
 \end{quote}
 
 \subsection{Synchronization}
 
 \textbf{Q14:} The "exec" system call returns -1 if loading the new executable fails, so it cannot return before the new executable has completed loading.  How does your code ensure this?  How is the load success/failure status passed back to the thread that calls "exec"?
 \begin{quote}
-  Answer here
+  The parent thread waits until the start semaphore in our child thread is upped when it is finished loading so it knows that it has finished loading. After the loading is complete if it failed the child waits for the parent to up it's exit sema so thread is not freed and this way parent can get the information from the child thread. The start success field of the thread is set in the loading phase of the thread so parent checks it's child's start success field and returns the appropriate value according to that.
 \end{quote}
 
 \textbf{Q15:} Consider parent process P with child process C.  How do you ensure proper synchronization and avoid race conditions when P calls wait(C) before C exits?  After C exits?  How do you ensure that all resources are freed in each case? How about when P terminates without waiting, before C exits?  After C exits?  Are there any special cases?
 \begin{quote}
-  Answer here
+  P down's C's wait sema and waits for it to be upped in the process wait function. C up's the sema when it exits and then down's its own exit sema and wait for parent to let it die after the parent got the information from the C thread. If P calls wait before C exits, it waits for C to enter exit state. If P calls wait after C exited, since wait sema is already upped, P immediately gets the information from C which is waiting on exit sema and lets it die by upping it's exit sema. C successfully exited in each case so it's resources are freed in both cases. If P terminates without waiting C then it sema ups all the child processes exit sema so that when the child process tries to exit, it's exit sema is already upped so it doesn't wait and exits successfully. Same goes for P exiting after C has exited.
 \end{quote}
 
 \subsection{Rationale}
 
 \textbf{Q16:} Why did you choose to implement access to user memory from the kernel in the way that you did?
 \begin{quote}
-  Answer here
+  We tried the faster method first but it was hard and we got page faults \emoji{grinning-face-with-sweat} so we turned to the easier method and used the functions from the vaddr.h and pagedir.h files and we didn't have any page faults so we sticked to it.
 \end{quote}
 
 \textbf{Q17:} What advantages or disadvantages can you see to your design for file descriptors?
 \begin{quote}
-  Answer here
+  Each thread has its own file descriptor list which holds fd and file variables and this gives the ability to have a huge amount of open files to the thread limited by just memory. The disadvantage is that we need to traverse the list to find the file with the given fd so the complexity of the syscalls with the fd is at minimum O(n) where n is the number of files open on the thread.
 \end{quote}
 
 \textbf{Q18:} The default \texttt{tid\_t} to \texttt{pid\_t} mapping is the identity mapping. If you changed it, what advantages are there to your approach?
 \begin{quote}
-  Answer here
-\end{quote}
-
-
-\section{Survey Questions}
-
-Answering these questions is optional, but it will help us improve the course in future quarters.  Feel free to tell us anything you want--these questions are just to spur your thoughts.  You may also choose to respond anonymously in the course evaluations at the end of the quarter.
-
-\textbf{Q1:} In your opinion, was this assignment, or any one of the three problems in it, too easy or too hard?  Did it take too long or too little time?
-\begin{quote}
-  Answer here
-\end{quote}
-
-\textbf{Q2:} Did you find that working on a particular part of the assignment gave you greater insight into some aspect of OS design?
-\begin{quote}
-  Answer here
-\end{quote}
-
-\textbf{Q3:} Is there some particular fact or hint we should give students in future quarters to help them solve the problems?  Conversely, did you find any of our guidance to be misleading?
-\begin{quote}
-  Answer here
-\end{quote}
-
-\textbf{Q4:} Do you have any suggestions for us to more effectively assist students,
-either for future semesters or the remaining projects?
-\begin{quote}
-  Answer here
-\end{quote}
-
-\textbf{Q5:} Any other comments?
-\begin{quote}
-  Answer here
+  We didn't change the mapping, and used this way. Because pintos does not allow multi-threaded user processes. If it did, the child threads of the process would all have the main process' pid\_t and their own tid\_t.
 \end{quote}
 
 
